@@ -1,0 +1,447 @@
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# OSHealthLib.bashenv
+#
+
+
+if [[ -n $OSHealthLibDir ]]
+then
+	return 0;
+fi
+
+readonly OSHealthLibDir=$(readlink -f $(dirname ${BASH_SOURCE[0]}))
+
+if [[ -z $GeneralSupportRoutinesDir ]]
+then
+	source $OSHealthLibDir/GeneralSupportRoutines.bashenv
+	source $OSHealthLibDir/StatisticsSupportObject.bashenv
+fi
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# CONSTANTS
+#
+
+readonly DefaultBGColor=lightskyblue
+readonly DefaultFontSize=10pt
+
+if [[ -z $PRECISION ]]
+then 
+	PRECISION=4
+fi
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# Lowest Level Routines
+#
+
+calcLoadPercentage() {
+	local IFS=,
+	set $(uptime | sed 's/.*load average: //g')
+	declare -r one=$1
+	declare -r five=$2
+	declare -r fifteen=$3
+	# Double the weight of first two:
+	echo "scale=PRECISION; 100 * ( $one*2 + $five*2 + $fifteen ) / 5" | bc
+}
+
+catTableMarkup() {
+	declare -r _bgC="$1"
+	declare -r _fS="$2"
+	declare -r _rows="$3"
+
+	declare -r bcss=echoBGS $_bgC
+	declare -r fsss=echoFSS $_fS
+	declare -r rb=$(echo -e "$_rows")
+	cat <<EOTM
+<table border=1 style="$bcss $fsss">
+$rb
+</table>
+EOTM
+
+}
+
+getDirDu() {
+	declare -r _dirStr=$1
+
+	declare -r n=$(du -s -BM $_dirStr | awk '{print $1}')
+	echo "<tr><th>$_dirStr</th><td>$n</td></tr>\n"
+}
+
+wrapDirRow() {
+#Filesystem                  Type 1K-blocks     Used Available Use% Mounted on
+#/dev/mapper/ubuntu--vg-root ext4 478679784 18003764 436290692   4% /
+	declare -r _baseDir=$1
+	declare -r _baseUnit=$1
+
+ 	declare -r ducount=$(du -s -B$_baseUnit $_baseDir)
+ 	declare -r filesystem=$(df . -B$_baseUnit -T | awk '{print $1}')
+ 	declare -r fstype=$(df . -B$_baseUnit -T | awk '{print $2}')
+ 	declare -r size=$(df . -B$_baseUnit -T | awk '{print $3}')
+ 	declare -r used=$(df . -B$_baseUnit -T | awk '{print $4}')
+ 	declare -r available=$(df . -B$_baseUnit -T | awk '{print $5}')
+ 	declare -r pctavailable=$(df . -B$_baseUnit -T | awk '{print $6}')
+ 	declare -r mountpoint=$(df . -B$_baseUnit -T | awk '{print $7}')
+ 	declare -r wcnos=$(find $_baseDir -type d | sed 's;[^/];;' | wc)
+ 	declare -r tbcs=$(echo $wcnos | awk '{print $3}')
+ 	declare -r tbls=$(echo $wcnos | awk '{print $1}')
+ 	declare -r dnodecount=$(( tbcs - tbls ))
+}
+
+wrapLsCPU() {
+	declare -r _bgC="$1"
+	declare -r _fS="$2"
+
+	declare -r bcss=$(echoBGS $_bgC)
+	declare -r fsss=$(echoFSS $_fS)
+
+	declare -r FP='[^ ][^ ]* '
+	declare -r FlPatt='[^ ][^ ]* [^ ][^ ]* [^ ][^ ]* [^ ][^ ]* [^ ][^ ]* [^ ][^ ]* '
+	declare -r RowTags='<tr><th align=left><nobr>\1</nobr></th><td>\2</td></tr>'
+	declare -r StyledTd="<td style='font-size: 8pt;'>"
+
+	# Table Creation:
+	cat <<EOTH
+<table border=1 style='$bcss $fsss max-width: 484px'>
+<tr><th>Field Name</th><th>Values</th></tr>
+EOTH
+	lscpu |\
+	sed "s;^\(.*\): *\([^ ].*\)$;$RowTags;" |\
+	sed "s#<td>\($FlPatt\)#$StyledTd\1#"
+	echo "</table>" 
+}
+
+wrapNVPairs() {
+	declare -r _nvPairs="$1"
+	declare -r _bgC="$2"
+	declare -r _fS="$3"
+
+	local name
+	local ntag
+	local value
+	local rows
+	for l in $_nvPairs
+	do
+		name=$(echo $l | sed 's/=.*$//')
+		v=$(echo $l | sed 's/^[^=]*=//')
+		if (( ${#str} < 5 ))
+		then
+			ntag="<th align=left style='font-size: larger;'>"
+		elif (( ${#str} > 16 ))
+		then
+			ntag="<th align=left style='font-size: smaller;'>"
+		else
+			ntag="<th align=left>"
+		fi
+		if [[ $name =~ URL ]]
+		then
+			value="<a href='$v'>$v</a>"
+		else
+			value=$v
+		fi
+		rows="$rows<tr>$ntag$name</th><td>$value</td></tr>\n"
+	done
+
+	catTableMarkup "$_bgC" "$_fS" "$rows"
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# Middle Level Routines
+#
+
+showFolderTree() {
+	declare -r _dataSubset=$1
+	
+	local rows
+	if [[ $_dataSubset = 'verbose' ]]
+	then
+		rows=$(
+			for d in $(find / -maxdepth 1 -type d | sort)
+			do
+				getDirDu $d
+			done
+		)
+	else
+
+		declare -r hometags=$(getDirDu /home)
+		declare -r slashtagsir=$(getDirDu /)
+		declare -r usrfagsir=$(getDirDu /usr)
+		declare -r vartagsir=$(getDirDu /var)
+		if [[ $_dataSubset = 'minimum' ]]
+		then
+			rows="$slashtags$hometags$usrtags$vartags"
+			echo -e $rows
+			return
+		fi
+
+		# concise
+		declare -r lnftags=$(getDirDu /lost+found)
+		declare -r roottags=$(getDirDu /root)
+		declare -r tmptags=$(getDirDu /tmp)
+		if [[ $_dataSubset = 'concise' ]]
+		then
+			rows="$slashtags$lnftags$hometags$roottags$tmptags$usrtags$vartags"
+			echo -e $rows
+			return
+		fi
+
+		# detail
+		declare -r boottags=$(getDirDu /boot)
+		declare -r devtags=$(getDirDu /dev)
+		declare -r etctags=$(getDirDu /etc)
+		declare -r libtags=$(getDirDu /lib)
+		declare -r lib32tags=$(getDirDu /lib32)
+		declare -r lib64tags=$(getDirDu /lib64)
+		if [[ $_dataSubset = 'detail' ]]
+		then
+			rows="$slashtags$boottags$devtags$hometags"
+			rows="$rows$libtags$lib32tags$lib64tags$lnftags"
+			rows="$rows$roottags$tmptags$usrtags$vartags"
+			echo -e $rows
+		fi
+	fi
+	catTableMarkup "$_bgC" "$_fS" "$rows"
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+showLsCPU() {
+	declare -r _dataSubset=$1
+	declare -r _bgC=$2
+	declare -r _fS=$3
+
+	declare -r minfilter='Architecture|CPU\(|Core|Socket|Model Name|table|Field Name'
+	declare -r confilter='Architecture|CPU|Thread|Core|Socket|NUMA|Model Name|table|Field Name'
+	declare -r ndetfilter='Flags|BogoMIPS|Virtualization|op-mode|Model[^ ]|Stepping'
+	case $_dataSubset in
+		minimum)	wrapLsCPU "$_bgC" "$_fS" | egrep "$minfilter";;
+		concise)	wrapLsCPU "$_bgC" "$_fS" | egrep "$confilter";;
+		detail)		wrapLsCPU "$_bgC" "$_fS" | egrep -v "$ndetfilter";;
+		verbose)	wrapLsCPU "$_bgC" "$_fS";;
+			  *)	xFATAL "No Such Format Type as '$_dataSubset'.";;
+	esac
+}
+
+showDirCounts() {
+	 find / -type d -maxdepth 1
+ 	declare -r slashb=$(find / -type d | sed 's;/;;')
+	row=$(wrapDirRow $d)
+}
+
+showMiscCounts() {
+	declare -r _dataSubset=$1
+	declare -r _bgC=$2
+	declare -r _fS=$3
+
+	declare -r ipv4as=$(ip a | grep inet | grep -v :: | awk '{print $2}')
+	local rows="<tr><th>netstuff</th><td>$ipv4as</td></tr>"
+# getconf PAGESIZE
+# less /proc/buddyinfo
+# less /proc/zoneinfo
+# cat /proc/sys/vm/swappiness
+
+	echo -e $rows
+}
+
+showNetStuff() {
+	declare -r _dataSubset=$1
+	declare -r _bgC=$2
+	declare -r _fS=$3
+
+	declare -r ipv4as=$(ip a | grep inet | grep -v :: | awk '{print $2}')
+
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+showOSRelease() {
+	declare -r _dataSubset=$1
+	declare -r _bgC=$2
+	declare -r _fS=$3
+
+	declare -r OSRFSpec=/etc/os-release
+	declare -r minfilter='PRETTY_NAME='
+	declare -r confilter='^(NAME=|VERSION=|VERSION_CODENAME=)'
+	declare -r detfilter='^(NAME=|VERSION=|VERSION_CODENAME=)'
+
+	local nvpairs
+	case $_dataSubset in
+		minimum)	nvpairs=$(egrep "$minfilter" $OSRFSpec);;
+		concise)	nvpairs=$(egrep "$confilter" $OSRFSpec);;
+		detail)		nvpairs=$(egrep -v "$ndetfilter" $OSRFSpec);;
+		verbose)	nvpairs=$(cat $OSRFSpec);;
+			  *)	xFATAL "No Such Format Type as '$_dataSubset'.";;
+	esac
+	wrapNVPairs "$nvpairs" "$_bgC" "$_fS"
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+showUname() {
+	declare -r _formatType=$1
+	declare -r _dataSubset=$2
+	declare -r _bgC=$3
+	declare -r _fS=$4
+
+	declare -r kernel_release=$(uname -r)
+	declare -r kernel_version=$(uname -v)
+	declare -r nodename=$(uname -n)
+	declare -r os=$(uname -o)
+
+	# Note:  These typically all have the same value:
+	declare -r hardware_platform=$(uname -i)
+	declare -r machine=$(uname -m)
+	declare -r processor=$(uname -p)
+
+	# Note:  This typically is a subset of OS: 
+	declare -r kernel_name=$(uname -s)
+
+	local hptags
+	local kntags
+	local krtags
+	local kvtags
+	local matags
+	local nntags
+	local ostags
+	local prtags
+
+	case $_formatType in
+		OneLine)
+				hptags="<td>$hardware_platform</td>"
+				kntags="<td>$kernel_name</td>"
+				krtags="<td>$kernel_release</td>"
+				kvtags="<td>$kernel_version</td>"
+				matags="<td>$machine</td>"
+				nntags="<td>$nodename</td>"
+				ostags="<td>$os</td>"
+				prtags="<td>$processor</td>"
+			;;
+		Table)
+				declare -r btp="<tr><th>"
+				declare -r bttp="</th><td>"
+				declare -r etp="</td></tr>\n"
+
+				hptags="${btp}Hardware Platform$bttp$$hardware_platform$etp"
+				kntags="${btp}Kernel Name$bttp$kernel_name$etp"
+				krtags="${btp}Kernel Release$bttp$kernel_release$etp"
+				kvtags="${btp}Kernel Version$bttp$kernel_version$etp"
+				nntags="${btp}Node Name$bttp$nodename$etp"
+				matags="${btp}Machine$bttp$machine$etp"
+				ostags="${btp}Operating System$bttp$os$etp"
+				prtags="${btp}Processor$bttp$processor$etp"
+			;;
+		*)
+			xFatal "No Such Format Type as '$_formatType'."
+	esac
+
+	case $_dataSubset in
+		minimum)	catTableMarkup "$_bgC" "$_fS" "$kntags$prtags$krtags";;
+		concise)	catTableMarkup "$_bgC" "$_fS" "$ostags$prtags$krtags$kvtags";;
+		detail)		
+					local b="$nntags$ostags$prtags$krtags$kvtags"
+					catTableMarkup "$_bgC" "$_fS" "$b";;
+		verbose)
+					local b="$nntags$ostags$prtags$krtags$kvtags"
+					b="$b$hptags$matags$prtags$kntags"
+					catTableMarkup "$_bgC" "$_fS" "$b";;
+			  *)	xFATAL "No Such Format Type as '$_dataSubset'.";;
+	esac
+}
+
+showUptime() {
+	declare -r _formatType=$1
+	declare -r _dataSubset=$2
+	declare -r _bgC=$3
+	declare -r _fS=$4
+
+	local mintags
+	local contags
+	local dettags
+	local vertags
+
+	case $_formatType in
+		OneLine)
+				mintags="<td>$(uptime -s)</td>"
+				contags="<td>$(uptime)</td>"
+				dettags="<td>$(uptime -p)</td>"
+				vertags="<td>$(date)</td><td>$(uptime -p)</td>"
+			;;
+		Table)
+				
+				declare -r intdays=$(uptime | sed 's/.*up //' | sed 's/ days.*//g')
+				declare -r inthours=$(uptime | sed 's/.*days, //' | sed 's/:.*//')
+				declare -r intminutes=$(uptime | sed 's/.*days, [0-9]*://' | sed 's/,.*//')
+				declare -r intphrase="$intdays days, $inthours hours, and $intminutes minutes"
+				declare -r loadpct=$(calcLoadPercentage)
+				declare -r prettyphrase=$(uptime -p)
+		 		declare -r sincetime=$(uptime -s)
+				declare -r usercount=$(uptime | sed 's/.*, *\([0-9][0-9]*\) user.*/\1/g')
+
+				declare -r btp="<tr><th>"
+				declare -r bttp="</th><td>"
+				declare -r etp="</td></tr>\n"
+
+				declare -r dtags="${btp}Now$bttp$(date)$etp"
+				declare -r htags="<tr><th colspan=2>Up Time</th></tr>\n"
+				declare -r itags="${btp}Up For$bttp$intphrase$etp"
+				declare -r ltags="${btp}Load Percentage$bttp$loadpct$etp"
+				declare -r ptags="${btp}Up For$bttp$prettyphrase$etp"
+				declare -r stags="${btp}Up Since$bttp$sincetime$etp"
+				declare -r utags="${btp}User count$bttp$usercount$etp"
+
+				mintags="$htags$stags$ltags"
+				contags="$htags$wtags$ltags$utags"
+				dettags="$htags$dtags$stags$itags$ltags$utags"
+				vertags="$htags$dtags$stags$ptags$ltags$utags"
+			;;
+		*)
+			xFatal "No Such Format Type as '$_formatType'."
+	esac
+
+	case $_dataSubset in
+		minimum)	catTableMarkup "$_bgC" "$_fS" "$mintags";;
+		concise)	catTableMarkup "$_bgC" "$_fS" "$contags";;
+		detail)		catTableMarkup "$_bgC" "$_fS" "$dettags";;
+		verbose)	catTableMarkup "$_bgC" "$_fS" "$vertags";;
+			  *)	xFATAL "No Such Format Type as '$_dataSubset'.";;
+	esac
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+# 
+# Top Level Routines
+#
+
+# Note:  Detail Grading is in comments below:
+
+wConciseOSState() {
+	# Detail grade 2
+	# Fits on three lines, 80 columns
+	echo ""
+}
+
+wExtensiveOSState() {
+	# Detail grade 5
+	# Verbose Summary for exhaustive report.
+	echo ""
+}
+
+wFullViewOSState() {
+	# Detail grade 3
+	# Fits in 80 columns by 24 lines
+	echo ""
+}
+
+wOSState() {
+	# Detail grade 4
+	# Selective Summary for reasonably full report.
+	echo ""
+}
+
+wSingleLineOSState() {
+	# Detail grade 1
+	# Fits on one line, 80 columns
+	echo ""
+}
+
+#
+# End of OSHealthLib.bashenv
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890

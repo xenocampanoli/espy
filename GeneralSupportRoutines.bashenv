@@ -1,0 +1,209 @@
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# GeneralSupportRoutines.bashenv
+#
+
+if [[ -n $GeneralSupportRoutinesDir ]]
+then
+	return 0;
+fi
+
+readonly GeneralSupportRoutinesDir=$(readlink -f $(dirname ${BASH_SOURCE[0]}))
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# CONSTANTS
+#
+
+if [[ -z $PRECISION ]]
+then 
+	PRECISION=2
+fi
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# Lowest Level Routines
+#
+
+# Following stolen (from stackoverflow item from Braden Best Jul 13 '15 21:52):
+
+errecho() { >&2 echo $@; }
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# Middle Level Routines
+#
+
+err() {
+	declare -r _msg="$1"
+
+	errecho "ERROR:  $_msg"
+	return 99
+}
+
+validateLength() {
+	declare -r _aChar=$1
+	declare -ri _aLength=$2
+
+	declare -ri l=${#_aChar}
+
+	(( l == _aLength )) && return 0
+	cat <<EOFAILMSG >&2 
+		FAIL:  string "$_aChar" does not validate to be length $_aLength.
+		Instead it is $l length.
+EOFAILMSG
+	exit 9
+}
+
+warn() {
+	declare -r _msg="$1"
+
+	errecho "WARNING:  $_msg"
+	return 0
+}
+
+xFatal() {
+	declare -r _msg="$1"
+
+	errecho "FATAL:  $_msg"
+	exit 99
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+# 
+# Top Level Routines
+#
+
+assureIntDefault() {
+	declare -ri _intSubject="$1"
+	declare -ri _intDefault="$2"
+
+	if [[ -z $_intSubject ]]
+	then
+		echo $_intDefault
+		return 0
+	elif [[ $_intSubject =~ ^[0-9][0-9]*$ ]]
+	then
+		echo $_intSubject
+		return 0
+	fi
+	xFatal "${FUNCNAME[0]} found value '$_intSubject' was not an integer."
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+assureNumDefault() {
+	declare -r _decimalSubject="$1"
+	declare -r _decimalDefault="$2"
+
+	if [[ -z $_decimalSubject ]]
+	then
+		echo $_decimalDefault
+		return 0
+	elif [[ $_decimalSubject =~ ^[0-9]*\.?[0-9][0-9]*$ ]]
+	then
+		echo $_decimalSubject
+		return 0
+	fi
+	m="${FUNCNAME[0]} found value '$_DecimalSubject' was not a decimal number."
+	xFatal "$m"
+}
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+echoBGS() {
+	declare -r _bgC="$1"
+
+	local bcss
+	if [[ -z $_bgC ]]
+	then
+		bcss="background-color: $DefaultBGColor;"
+	elif [[ $_bgC != 'NONE' ]]
+	then
+		bcss="background-color: $_bgC;"
+	fi
+	echo $bcss
+}
+
+echoFSS() {
+	declare -r _fS="$1"
+
+	local fsss
+	if [[ -z $_fS ]]
+	then
+		fsss="font-size: $DefaultFontSize;"
+	elif [[ $_fS != 'NONE' ]]
+	then
+		fsss="font-size: $_fS;"
+	fi
+	echo $fsss
+}
+
+echoMany() {
+	declare -r _aChar=$1
+	declare -r _aTimes=$2
+
+	declare -r default_length=80
+	local l=$default_length
+	if [[ -n $_aTimes ]]
+	then
+		l=$_aTimes
+	fi
+	
+	validateLength "$_aChar" 1
+
+	printf "%0.s$_aChar" seq 1 $l
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+validateArgumentCount() {
+	declare -ri _aCSpec=$1
+	declare -ri _aCount=$2
+
+	local m
+	(( _aCSpec == _aCount )) && return 0
+	xFatal "${FUNCNAME[1]} takes $_aCSpec argument.  $_aCount provided."
+}
+
+validateDecimalNumber() {
+	declare -r _n="$1"
+
+	if [[ -z $_n ]]
+	then
+		xFatal "Value is blank in ${FUNCNAME[1]}."
+	elif [[ $_n =~ ^\-?[0-9]*\.?[0-9][0-9]*$ ]]
+	then
+		return 0
+	fi
+	xFatal "Value '$_n' is not a decimal number."
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+validateEspyId() {
+	declare -r _aStr=$1
+
+	[[ "$_aStr" =~ ^[A-Za-z][A-Za-z0-9][A-Za-z0-9]*$ ]] && return 0
+	local m
+	m="Value '$_aStr' in ${FUNCNAME[1]} does not comply to be an Espy Id."
+	m="$m An Espy Id must start with a letter, "
+	m="$m and may only contain letters or numbers."
+	xFatal "$m"
+}
+
+validatePositiveInteger() {
+	declare -r _n="$1"
+
+	if [[ -z $_n ]]
+	then
+		xFatal "Value is blank in ${FUNCNAME[1]}."
+	elif [[ $_n =~ ^[0-9][0-9]*$ ]]
+	then
+		return 0
+	fi
+	xFatal "Value '$_n' is not a positive integer."
+}
+
+#
+# End of GeneralSupportRoutines.bashenv
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890

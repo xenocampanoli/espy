@@ -1,0 +1,332 @@
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# StatisticsSupportObject.bashenv - Uses 
+#
+
+if [[ -n $StatisticsSupportObjectDir ]]
+then
+	return 0;
+fi
+
+readonly StatisticsSupportObjectDir=$(readlink -f $(dirname ${BASH_SOURCE[0]}))
+
+if [[ -z $GeneralSupportRoutinesDir ]]
+then
+	source $StatisticsSupportObjectDir/GeneralSupportRoutines.bashenv
+fi
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# CONSTANTS
+#
+
+if [[ -z $PRECISION ]]
+then 
+	PRECISION=3
+fi
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# Lowest Level Routines
+#
+
+getAbsDiff() {
+	declare -r _n1=$1
+	declare -r _n2=$2
+
+	validateArgumentCount 2 $#
+	validateDecimalNumber $_n1
+	validateDecimalNumber $_n2
+
+	local bccmd
+	declare -r bool=$(echo "scale=$PRECISION; $_n1 > $_n2" | bc)
+	if (( bool == 1 )) # True case
+	then
+		bccmd="scale=$PRECISION; $_n1 - $_n2"
+	else
+		bccmd="scale=$PRECISION; $_n2 - $_n1"
+	fi
+	echo $bccmd | bc
+}
+
+getN() {
+	declare -r _oName=$1
+
+	validateArgumentCount 1 $#
+	validateEspyId $_oName
+
+	declare -r fspec=${!_oName}
+	declare -ri n=$(wc -l $fspec | awk '{print $1}')
+	validatePositiveInteger $n
+	echo -n $n
+}
+
+getSumXs() {
+	declare -r _oName=$1
+	
+	validateArgumentCount 1 $#
+	validateEspyId $_oName
+
+	declare -r fspec=${!_oName}
+
+	declare -ri n=$(getN $_oName)
+
+	local sumxs=0
+	local x
+	for x in $(cat $fspec)
+	do
+		sumxs=$(echo "scale=$PRECISION; $sumxs + $x" | bc)
+	done
+	echo -n $sumxs
+}
+
+getSumXXs() {
+	declare -r _oName=$1
+	
+	validateArgumentCount 1 $#
+	validateEspyId $_oName
+
+	declare -r fspec=${!_oName}
+
+	declare -ri n=$(getN $_oName)
+
+	local sumxxs=0
+	local x
+	for x in $(cat $fspec)
+	do
+		sumxxs=$(echo "scale=$PRECISION; $sumxxs + ( $x * $x )" | bc)
+	done
+	echo -n $sumxxs
+}
+
+isOdd() {
+	declare -ri _n=$1
+
+	validateArgumentCount 1 $#
+	(( _n % 2 != 0 ))
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# Middle Level Routines
+#
+
+deleteFO() {
+	declare -r _oName=$1
+
+	validateArgumentCount 1 $#
+	validateEspyId $_oName
+
+	declare -r fspec=${!_oName}
+	unset $_oName
+	rm -f $fspec
+}
+
+getMedian() {
+	declare -r _oName=$1
+
+	validateArgumentCount 1 $#
+	validateEspyId $_oName
+
+	declare -r fspec=${!_oName}
+
+	declare -ri n=$(getN $_oName)
+
+	local i=0
+	local x
+	if isOdd $n
+	then
+		local mi=$(( n / 2 )) # Index to odd item is even.
+		for x in $(sort -n $fspec)
+		do
+			if (( i == mi ))
+			then
+				echo -n $x
+				return $?
+			fi
+			(( i += 1 ))
+		done
+	else
+		local mi2=$(( n / 2 )) # Index to second item is even as above.
+		local mi1=$(( mi2 - 1 ))  # Index to first item is one before.
+		local mb
+		for x in $(sort -n $fspec)
+		do
+			if (( i == mi1 ))
+			then
+				mb=$x
+			elif (( i == mi2 ))
+			then
+				dbmb=$(echo "scale=$PRECISION; ( $mb + $x ) / 2.0" | bc)
+				echo "scale=$PRECISION; ( $mb + $x ) / 2.0" | bc
+				return $?
+			fi
+			(( i += 1 ))
+		done
+	fi
+	xFatal "${FUNCNAME[0]} Programmer Error.  Should never reach this point."
+}
+
+getMu() {
+	declare -r _oName=$1
+
+	validateArgumentCount 1 $#
+	validateEspyId $_oName
+
+	declare -ri n=$(getN $_oName)
+	declare -r sumxs=$(getSumXs $_oName)
+
+	echo "scale=$PRECISION; $sumxs / $n" | bc
+}
+
+getVariance() {
+	declare -r _oName=$1
+
+	validateArgumentCount 1 $#
+	validateEspyId $_oName
+
+	declare -r fspec=${!_oName}
+	declare -r mu=$(getMu $_oName)
+	declare -r n=$(getN $_oName)
+	declare -r sumxxs=$(getSumXXs $_oName)
+	echo "scale=$PRECISION; ( $sumxxs / $n ) - ( $mu * $mu )" | bc
+}
+
+newFO() {
+	declare -r _oName=$1
+
+	validateArgumentCount 1 $#
+
+	declare -g "$_oName=$(mktemp --suffix=.espy)"
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+# 
+# Top Level Routines
+#
+
+addNumber() {
+	declare -r _oName=$1
+	declare -r _noA=$2
+
+	validateArgumentCount 2 $#
+	validateEspyId $_oName
+	validateDecimalNumber $_noA
+
+	declare -r fspec=${!_oName}
+
+	echo "$_noA" >>$fspec
+}
+
+dumpNumbers() {
+	declare -r _oName=$1
+
+	validateArgumentCount 1 $#
+	validateEspyId $_oName
+
+	declare -r fspec=${!_oName}
+
+	local i=0
+	for x in $(cat $fspec)
+	do
+		errecho "$i:  $x"
+		(( i += 1 ))
+	done
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+getMAD() {
+	declare -r _oName=$1
+
+	validateArgumentCount 1 $#
+	validateEspyId $_oName
+
+	declare -r fspec=${!_oName}
+	declare -r iof="iv$(date +%s)"
+	newFO $iof
+	declare -r median=$(getMedian $_oName)
+
+	local ad
+	for x in $(cat $fspec)
+	do
+		ad=$(getAbsDiff $x $median)
+		addNumber $iof $ad
+	done
+
+	declare -r mad=$(getMedian $iof)
+
+	deleteFO $iof
+	echo $mad
+}
+
+getFrequencies() {
+# The bug that makes the keys not sortable at this level may not
+# be worth messing with.  Perhaps I can log it some time.  12/14/2019
+	declare -r _oName=$1
+	declare -rl _distroSet=$2
+
+	validateArgumentCount 2 $#
+	validateEspyId $_oName
+	validateEspyId $_distroSet
+
+	declare -r fspec=${!_oName}
+	declare -A freqs
+
+	local maxcount=0
+	for x in $(cat $fspec)
+	do
+		if [[ -z ${freqs[$x]} ]]
+		then 
+			freqs[$x]=1
+		else
+			(( freqs[$x] += 1 ))
+		fi
+		if (( freqs[$x] > maxcount ))
+		then
+			maxcount=${freqs[$x]}
+		fi
+	done
+	local key
+	declare -r iof="iv$(date +%s)"
+	newFO $iof
+	for key in "${!freqs[@]}"
+	do
+		addNumber $iof $key
+	done
+	declare -r sfspec=${!iof}
+	for key in $(sort -n $sfspec)
+	do
+		case $_distroSet in
+			alldumped) echo "$key:  ${freqs[$key]}";;
+			mode) if (( ${freqs[$key]} == maxcount )); then echo -n "$key "; fi;;
+			modewithscore)
+				if (( ${freqs[$key]} == maxcount ))
+				then
+					echo -n "$key:  ${freqs[$key]}, "
+				fi;;
+			*) xFatal "Distro Set '$_distroSet is not a valid choice."
+		esac
+	done
+	deleteFO $iof
+	if [[ $_distroSet != alldumped ]]
+	then
+		echo
+	fi
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+getSigma() {
+	declare -r _oName=$1
+
+	validateArgumentCount 1 $#
+	validateEspyId $_oName
+
+	declare v=$(getVariance $_oName)
+	echo "scale=$PRECISION; sqrt($v)" | bc
+}
+
+#
+# End of StatisticsSupportObject.bashenv
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890

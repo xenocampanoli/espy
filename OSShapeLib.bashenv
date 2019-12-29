@@ -1,0 +1,172 @@
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# OSShapeLib.bashenv
+#
+
+
+if [[ -n $OSShapeLibDir ]]
+then
+	return 0;
+fi
+
+readonly OSShapeLibDir=$(readlink -f $(dirname ${BASH_SOURCE[0]}))
+
+if [[ -z $GeneralSupportRoutinesDir ]]
+then
+	source $OSShapeLibDir/GeneralSupportRoutines.bashenv
+	source $OSShapeLibDir/StatisticsSupportObject.bashenv
+fi
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# CONSTANTS
+#
+
+readonly DefaultBGColor=mistyrose
+readonly DefaultFontSize=9pt
+
+if [[ -z $PRECISION ]]
+then 
+	PRECISION=3
+fi
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# Lowest Level Routines
+#
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+#
+# Middle Level Routines
+#
+
+showFolderTree() {
+	declare -r _dataSubset=$1
+	
+	local rows
+	if [[ $_dataSubset = 'verbose' ]]
+	then
+		rows=$(
+			for d in $(find / -maxdepth 1 -type d | sort)
+			do
+				getDirDu $d
+			done
+		)
+	else
+
+		declare -r hometags=$(getDirDu /home)
+		declare -r slashtagsir=$(getDirDu /)
+		declare -r usrfagsir=$(getDirDu /usr)
+		declare -r vartagsir=$(getDirDu /var)
+		if [[ $_dataSubset = 'minimum' ]]
+		then
+			rows="$slashtags$hometags$usrtags$vartags"
+			echo -e $rows
+			return
+		fi
+
+		# concise
+		declare -r lnftags=$(getDirDu /lost+found)
+		declare -r roottags=$(getDirDu /root)
+		declare -r tmptags=$(getDirDu /tmp)
+		if [[ $_dataSubset = 'concise' ]]
+		then
+			rows="$slashtags$lnftags$hometags$roottags$tmptags$usrtags$vartags"
+			echo -e $rows
+			return
+		fi
+
+		# detail
+		declare -r boottags=$(getDirDu /boot)
+		declare -r devtags=$(getDirDu /dev)
+		declare -r etctags=$(getDirDu /etc)
+		declare -r libtags=$(getDirDu /lib)
+		declare -r lib32tags=$(getDirDu /lib32)
+		declare -r lib64tags=$(getDirDu /lib64)
+		if [[ $_dataSubset = 'detail' ]]
+		then
+			rows="$slashtags$boottags$devtags$hometags"
+			rows="$rows$libtags$lib32tags$lib64tags$lnftags"
+			rows="$rows$roottags$tmptags$usrtags$vartags"
+			echo -e $rows
+		fi
+	fi
+	catTableMarkup "$_bgC" "$_fS" "$rows"
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+showDirCounts() {
+	 find / -type d -maxdepth 1
+ 	declare -r slashb=$(find / -type d | sed 's;/;;')
+	row=$(wrapDirRow $d)
+}
+
+showMiscCounts() {
+	declare -r _dataSubset=$1
+	declare -r _bgC=$2
+	declare -r _fS=$3
+
+	declare -r ipv4as=$(ip a | grep inet | grep -v :: | awk '{print $2}')
+	local rows="<tr><th>netstuff</th><td>$ipv4as</td></tr>"
+# getconf PAGESIZE
+# less /proc/buddyinfo
+# less /proc/zoneinfo
+# cat /proc/sys/vm/swappiness
+
+	echo -e $rows
+}
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+
+showNetStuff() {
+	declare -r _dataSubset=$1
+	declare -r _bgC=$2
+	declare -r _fS=$3
+
+	declare -r ipv4as=$(ip a | grep inet | grep -v :: | awk '{print $2}')
+
+}
+
+
+
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
+# 
+# Top Level Routines
+#
+
+# Note:  Detail Grading is in comments below:
+
+wConciseOSShape() {
+	# Detail grade 2
+	# Fits on three lines, 80 columns
+	echo ""
+}
+
+wExtensiveOSShape() {
+	# Detail grade 5
+	# Verbose Summary for exhaustive report.
+	echo ""
+}
+
+wFullViewOSShape() {
+	# Detail grade 3
+	# Fits in 80 columns by 24 lines
+	echo ""
+}
+
+wOSShape() {
+	# Detail grade 4
+	# Selective Summary for reasonably full report.
+	echo ""
+}
+
+wSingleLineOSShape() {
+	# Detail grade 1
+	# Fits on one line, 80 columns
+	echo ""
+}
+
+#
+# End of OSShapeLib.bashenv
+#2345678901234567890123456789012345678901234567890123456789012345678901234567890
